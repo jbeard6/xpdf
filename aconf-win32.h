@@ -7,8 +7,6 @@
 #ifndef ACONF_H
 #define ACONF_H
 
-#include <aconf2.h>
-
 /*
  * Use A4 paper size instead of Letter for PostScript output.
  */
@@ -28,21 +26,6 @@
  * Enable multithreading support.
  */
 #define MULTITHREADED 1
-
-/*
- * Enable C++ exceptions.
- */
-#define USE_EXCEPTIONS 1
-
-/*
- * Enable word list support.
- */
-#undef TEXTOUT_WORD_LIST
-
-/*
- * Use fixed point (instead of floating point) arithmetic.
- */
-#undef USE_FIXEDPOINT
 
 /*
  * Directory with the Xpdf app-defaults file.
@@ -67,15 +50,8 @@
 #undef HAVE_BSTRING_H
 #undef HAVE_POPEN
 #undef HAVE_MKSTEMP
-#undef HAVE_MKSTEMPS
 #undef SELECT_TAKES_INT
-#define HAVE_STD_SORT 1
-#undef HAVE_FSEEKO
 #undef HAVE_FSEEK64
-#undef _FILE_OFFSET_BITS
-#undef _LARGE_FILES
-#undef _LARGEFILE_SOURCE
-#undef HAVE_XTAPPSETEXITFLAG
 
 /*
  * This is defined if using libXpm.
@@ -102,20 +78,5 @@
  * This is defined if using libpaper.
  */
 #undef HAVE_PAPER_H
-
-/*
- * Enable support for loading plugins.
- */
-#undef ENABLE_PLUGINS
-
-/*
- * Defined if the Splash library is avaiable.
- */
-#undef HAVE_SPLASH
-
-/*
- * Enable support for CMYK output.
- */
-#undef SPLASH_CMYK
 
 #endif

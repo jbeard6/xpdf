@@ -44,7 +44,6 @@ static GBool noEmbedT1Fonts = gFalse;
 static GBool noEmbedTTFonts = gFalse;
 static GBool noEmbedCIDPSFonts = gFalse;
 static GBool noEmbedCIDTTFonts = gFalse;
-static GBool preload = gFalse;
 static char paperSize[15] = "";
 static int paperWidth = 0;
 static int paperHeight = 0;
@@ -92,10 +91,8 @@ static ArgDesc argDesc[] = {
    "don't embed TrueType fonts"},
   {"-noembcidps", argFlag,     &noEmbedCIDPSFonts, 0,
    "don't embed CID PostScript fonts"},
-  {"-noembcidtt", argFlag,     &noEmbedCIDTTFonts,  0,
+  {"-noembcidtt", argFlag, &noEmbedCIDTTFonts,  0,
    "don't embed CID TrueType fonts"},
-  {"-preload",    argFlag,     &preload,        0,
-   "preload images and forms"},
   {"-paper",      argString,   paperSize,       sizeof(paperSize),
    "paper size (letter, legal, A4, A3, match)"},
   {"-paperw",     argInt,      &paperWidth,     0,
@@ -196,9 +193,6 @@ int main(int argc, char *argv[]) {
 
   // read config file
   globalParams = new GlobalParams(cfgFileName);
-#if HAVE_SPLASH
-  globalParams->setupBaseFonts(NULL);
-#endif
   if (paperSize[0]) {
     if (!globalParams->setPSPaperSize(paperSize)) {
       fprintf(stderr, "Invalid paper size\n");
@@ -243,9 +237,6 @@ int main(int argc, char *argv[]) {
   if (noEmbedCIDTTFonts) {
     globalParams->setPSEmbedCIDTrueType(!noEmbedCIDTTFonts);
   }
-  if (preload) {
-    globalParams->setPSPreload(preload);
-  }
 #if OPI_SUPPORT
   if (doOPI) {
     globalParams->setPSOPI(doOPI);
@@ -280,7 +271,7 @@ int main(int argc, char *argv[]) {
 
   // check for print permission
   if (!doc->okToPrint()) {
-    error(errNotAllowed, -1, "Printing this document is not allowed.");
+    error(-1, "Printing this document is not allowed.");
     exitCode = 3;
     goto err1;
   }
@@ -309,16 +300,16 @@ int main(int argc, char *argv[]) {
 
   // check for multi-page EPS or form
   if ((doEPS || doForm) && firstPage != lastPage) {
-    error(errCommandLine, -1, "EPS and form files can only contain one page.");
+    error(-1, "EPS and form files can only contain one page.");
     goto err2;
   }
 
   // write PostScript file
-  psOut = new PSOutputDev(psFileName->getCString(), doc,
-			  firstPage, lastPage, mode);
+  psOut = new PSOutputDev(psFileName->getCString(), doc->getXRef(),
+			  doc->getCatalog(), firstPage, lastPage, mode);
   if (psOut->isOk()) {
     doc->displayPages(psOut, firstPage, lastPage, 72, 72,
-		      0, !pageCrop, globalParams->getPSCrop(), gTrue);
+		      0, !pageCrop, globalParams->getPSCrop(), gFalse);
   } else {
     delete psOut;
     exitCode = 2;

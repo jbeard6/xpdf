@@ -19,13 +19,6 @@
 
 //------------------------------------------------------------------------
 
-// font cache size parameters
-#define splashFontCacheAssoc   8
-#define splashFontCacheMaxSets 8
-#define splashFontCacheSize    (128*1024)
-
-//------------------------------------------------------------------------
-
 struct SplashFontCacheTag {
   int c;
   short xFrac, yFrac;		// x and y fractions
@@ -38,17 +31,13 @@ struct SplashFontCacheTag {
 //------------------------------------------------------------------------
 
 SplashFont::SplashFont(SplashFontFile *fontFileA, SplashCoord *matA,
-		       SplashCoord *textMatA, GBool aaA) {
+		       GBool aaA) {
   fontFile = fontFileA;
   fontFile->incRefCnt();
   mat[0] = matA[0];
   mat[1] = matA[1];
   mat[2] = matA[2];
   mat[3] = matA[3];
-  textMat[0] = textMatA[0];
-  textMat[1] = textMatA[1];
-  textMat[2] = textMatA[2];
-  textMat[3] = textMatA[3];
   aa = aaA;
 
   cache = NULL;
@@ -71,12 +60,17 @@ void SplashFont::initCache() {
   }
 
   // set up the glyph pixmap cache
-  cacheAssoc = splashFontCacheAssoc;
-  for (cacheSets = splashFontCacheMaxSets;
-       cacheSets > 1 &&
-	 cacheSets * cacheAssoc * glyphSize > splashFontCacheSize;
-       cacheSets >>= 1) ;
-  cache = (Guchar *)gmallocn(cacheSets * cacheAssoc, glyphSize);
+  cacheAssoc = 8;
+  if (glyphSize <= 256) {
+    cacheSets = 8;
+  } else if (glyphSize <= 512) {
+    cacheSets = 4;
+  } else if (glyphSize <= 1024) {
+    cacheSets = 2;
+  } else {
+    cacheSets = 1;
+  }
+  cache = (Guchar *)gmallocn(cacheSets* cacheAssoc, glyphSize);
   cacheTags = (SplashFontCacheTag *)gmallocn(cacheSets * cacheAssoc,
 					     sizeof(SplashFontCacheTag));
   for (i = 0; i < cacheSets * cacheAssoc; ++i) {

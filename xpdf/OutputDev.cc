@@ -55,7 +55,6 @@ void OutputDev::updateAll(GfxState *state) {
   updateLineCap(state);
   updateMiterLimit(state);
   updateLineWidth(state);
-  updateStrokeAdjust(state);
   updateFillColorSpace(state);
   updateFillColor(state);
   updateStrokeColorSpace(state);
@@ -65,8 +64,6 @@ void OutputDev::updateAll(GfxState *state) {
   updateStrokeOpacity(state);
   updateFillOverprint(state);
   updateStrokeOverprint(state);
-  updateOverprintMode(state);
-  updateTransfer(state);
   updateFont(state);
 }
 
@@ -88,13 +85,6 @@ void OutputDev::drawImageMask(GfxState *state, Object *ref, Stream *str,
       str->getChar();
     str->close();
   }
-}
-
-void OutputDev::setSoftMaskFromImageMask(GfxState *state,
-					 Object *ref, Stream *str,
-					 int width, int height, GBool invert,
-					 GBool inlineImg) {
-  drawImageMask(state, ref, str, width, height, invert, inlineImg);
 }
 
 void OutputDev::drawImage(GfxState *state, Object *ref, Stream *str,

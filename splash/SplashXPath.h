@@ -16,11 +16,6 @@
 #include "SplashTypes.h"
 
 class SplashPath;
-struct SplashXPathAdjust;
-
-//------------------------------------------------------------------------
-
-#define splashMaxCurveSplits (1 << 10)
 
 //------------------------------------------------------------------------
 // SplashXPathSeg
@@ -34,11 +29,15 @@ struct SplashXPathSeg {
   Guint flags;
 };
 
-#define splashXPathHoriz   0x01 // segment is vertical (y0 == y1)
+#define splashXPathFirst   0x01	// first segment of a subpath
+#define splashXPathLast    0x02	// last segment of a subpath
+#define splashXPathEnd0    0x04	// first endpoint is end of an open subpath
+#define splashXPathEnd1    0x08 // second endpoint is end of an open subpath
+#define splashXPathHoriz   0x10 // segment is vertical (y0 == y1)
 				//   (dxdy is undef)
-#define splashXPathVert    0x02 // segment is horizontal (x0 == x1)
+#define splashXPathVert    0x20 // segment is horizontal (x0 == x1)
 				//   (dydx is undef)
-#define splashXPathFlip	   0x04	// y0 > y1
+#define splashXPathFlip	   0x40	// y0 > y1
 
 //------------------------------------------------------------------------
 // SplashXPath
@@ -48,31 +47,23 @@ class SplashXPath {
 public:
 
   // Expands (converts to segments) and flattens (converts curves to
-  // lines) <path>.  Transforms all points from user space to device
-  // space, via <matrix>.  If <closeSubpaths> is true, closes all open
+  // lines) <path>.  If <closeSubpaths> is true, closes all open
   // subpaths.
-  SplashXPath(SplashPath *path, SplashCoord *matrix,
-	      SplashCoord flatness, GBool closeSubpaths);
+  SplashXPath(SplashPath *path, SplashCoord flatness,
+	      GBool closeSubpaths);
 
   // Copy an expanded path.
   SplashXPath *copy() { return new SplashXPath(this); }
 
   ~SplashXPath();
 
-  // Multiply all coordinates by splashAASize, in preparation for
-  // anti-aliased rendering.
-  void aaScale();
-
   // Sort by upper coordinate (lower y), in y-major order.
   void sort();
 
 private:
 
+  SplashXPath();
   SplashXPath(SplashXPath *xPath);
-  void transform(SplashCoord *matrix, SplashCoord xi, SplashCoord yi,
-		 SplashCoord *xo, SplashCoord *yo);
-  void strokeAdjust(SplashXPathAdjust *adjust,
-		    SplashCoord *xp, SplashCoord *yp);
   void grow(int nSegs);
   void addCurve(SplashCoord x0, SplashCoord y0,
 		SplashCoord x1, SplashCoord y1,
@@ -80,8 +71,15 @@ private:
 		SplashCoord x3, SplashCoord y3,
 		SplashCoord flatness,
 		GBool first, GBool last, GBool end0, GBool end1);
+  void addArc(SplashCoord x0, SplashCoord y0,
+	      SplashCoord x1, SplashCoord y1,
+	      SplashCoord xc, SplashCoord yc,
+	      SplashCoord r, int quad,
+	      SplashCoord flatness,
+	      GBool first, GBool last, GBool end0, GBool end1);
   void addSegment(SplashCoord x0, SplashCoord y0,
-		  SplashCoord x1, SplashCoord y1);
+		  SplashCoord x1, SplashCoord y1,
+		  GBool first, GBool last, GBool end0, GBool end1);
 
   SplashXPathSeg *segs;
   int length, size;		// length and size of segs array

@@ -18,14 +18,11 @@
 #include "gtypes.h"
 
 class GString;
-class GList;
-class PDFDoc;
 class XRef;
 class Array;
 class Stream;
 class Parser;
 class Dict;
-class Function;
 class OutputDev;
 class GfxFontDict;
 class GfxFont;
@@ -41,11 +38,11 @@ class GfxPatchMeshShading;
 struct GfxPatch;
 class GfxState;
 struct GfxColor;
-class GfxColorSpace;
 class Gfx;
 class PDFRectangle;
-class AnnotBorderStyle;
 
+//------------------------------------------------------------------------
+// Gfx
 //------------------------------------------------------------------------
 
 enum GfxClipType {
@@ -66,7 +63,7 @@ enum TchkType {
   tchkNone			// used to avoid empty initializer lists
 };
 
-#define maxArgs 33
+#define maxArgs 8
 
 struct Operator {
   char name[4];
@@ -74,8 +71,6 @@ struct Operator {
   TchkType tchk[maxArgs];
   void (Gfx::*func)(Object args[], int numArgs);
 };
-
-//------------------------------------------------------------------------
 
 class GfxResources {
 public:
@@ -90,7 +85,6 @@ public:
   GfxPattern *lookupPattern(char *name);
   GfxShading *lookupShading(char *name);
   GBool lookupGState(char *name, Object *obj);
-  GBool lookupPropertiesNF(char *name, Object *obj);
 
   GfxResources *getNext() { return next; }
 
@@ -102,50 +96,21 @@ private:
   Object patternDict;
   Object shadingDict;
   Object gStateDict;
-  Object propsDict;
   GfxResources *next;
 };
-
-//------------------------------------------------------------------------
-// GfxMarkedContent
-//------------------------------------------------------------------------
-
-enum GfxMarkedContentKind {
-  gfxMCOptionalContent,
-  gfxMCActualText,
-  gfxMCOther
-};
-
-class GfxMarkedContent {
-public:
-
-  GfxMarkedContent(GfxMarkedContentKind kindA, GBool ocStateA) {
-    kind = kindA;
-    ocState = ocStateA;
-  }
-  ~GfxMarkedContent() {}
-
-  GfxMarkedContentKind kind;
-  GBool ocState;		// true if drawing is enabled, false if
-				//   disabled
-};
-
-//------------------------------------------------------------------------
-// Gfx
-//------------------------------------------------------------------------
 
 class Gfx {
 public:
 
   // Constructor for regular output.
-  Gfx(PDFDoc *docA, OutputDev *outA, int pageNum, Dict *resDict,
+  Gfx(XRef *xrefA, OutputDev *outA, int pageNum, Dict *resDict,
       double hDPI, double vDPI, PDFRectangle *box,
       PDFRectangle *cropBox, int rotate,
       GBool (*abortCheckCbkA)(void *data) = NULL,
       void *abortCheckCbkDataA = NULL);
 
   // Constructor for a sub-page object.
-  Gfx(PDFDoc *docA, OutputDev *outA, Dict *resDict,
+  Gfx(XRef *xrefA, OutputDev *outA, Dict *resDict,
       PDFRectangle *box, PDFRectangle *cropBox,
       GBool (*abortCheckCbkA)(void *data) = NULL,
       void *abortCheckCbkDataA = NULL);
@@ -155,10 +120,10 @@ public:
   // Interpret a stream or array of streams.
   void display(Object *obj, GBool topLevel = gTrue);
 
-  // Display an annotation, given its appearance (a Form XObject),
-  // border style, and bounding box (in default user space).
-  void drawAnnot(Object *str, AnnotBorderStyle *borderStyle,
-		 double xMin, double yMin, double xMax, double yMax);
+  // Display an annotation, given its appearance (a Form XObject) and
+  // bounding box (in default user space).
+  void doAnnot(Object *str, double xMin, double yMin,
+	       double xMax, double yMax);
 
   // Save graphics state.
   void saveState();
@@ -169,16 +134,8 @@ public:
   // Get the current graphics state object.
   GfxState *getState() { return state; }
 
-  void drawForm(Object *str, Dict *resDict, double *matrix, double *bbox,
-		GBool transpGroup = gFalse, GBool softMask = gFalse,
-		GfxColorSpace *blendingColorSpace = NULL,
-		GBool isolated = gFalse, GBool knockout = gFalse,
-		GBool alpha = gFalse, Function *transferFunc = NULL,
-		GfxColor *backdropColor = NULL);
-
 private:
 
-  PDFDoc *doc;
   XRef *xref;			// the xref table for this PDF file
   OutputDev *out;		// output device
   GBool subPage;		// is this a sub-page object?
@@ -193,12 +150,6 @@ private:
   double baseMatrix[6];		// default matrix for most recent
 				//   page/form/pattern
   int formDepth;
-  double textClipBBox[4];	// text clipping bounding box
-  GBool textClipBBoxEmpty;	// true if textClipBBox has not been
-				//   initialized yet
-  GBool ocState;		// true if drawing is enabled, false if
-				//   disabled
-  GList *markedContentStack;	// BMC/BDC/EMC stack [GfxMarkedContent]
 
   Parser *parser;		// parser for page content stream(s)
 
@@ -225,10 +176,6 @@ private:
   void opSetMiterLimit(Object args[], int numArgs);
   void opSetLineWidth(Object args[], int numArgs);
   void opSetExtGState(Object args[], int numArgs);
-  void doSoftMask(Object *str, GBool alpha,
-		  GfxColorSpace *blendingColorSpace,
-		  GBool isolated, GBool knockout,
-		  Function *transferFunc, GfxColor *backdropColor);
   void opSetRenderingIntent(Object args[], int numArgs);
 
   // color operators
@@ -265,14 +212,8 @@ private:
   void opEOFillStroke(Object args[], int numArgs);
   void opCloseEOFillStroke(Object args[], int numArgs);
   void doPatternFill(GBool eoFill);
-  void doPatternStroke();
-  void doPatternText();
-  void doPatternImageMask(Object *ref, Stream *str, int width, int height,
-			  GBool invert, GBool inlineImg);
-  void doTilingPatternFill(GfxTilingPattern *tPat,
-			   GBool stroke, GBool eoFill, GBool text);
-  void doShadingPatternFill(GfxShadingPattern *sPat,
-			    GBool stroke, GBool eoFill, GBool text);
+  void doTilingPatternFill(GfxTilingPattern *tPat, GBool eoFill);
+  void doShadingPatternFill(GfxShadingPattern *sPat, GBool eoFill);
   void opShFill(Object args[], int numArgs);
   void doFunctionShFill(GfxFunctionShading *shading);
   void doFunctionShFill1(GfxFunctionShading *shading,
@@ -319,12 +260,12 @@ private:
   void opMoveSetShowText(Object args[], int numArgs);
   void opShowSpaceText(Object args[], int numArgs);
   void doShowText(GString *s);
-  void doIncCharCount(GString *s);
 
   // XObject operators
   void opXObject(Object args[], int numArgs);
   void doImage(Object *ref, Stream *str, GBool inlineImg);
   void doForm(Object *str);
+  void doForm1(Object *str, Dict *resDict, double *matrix, double *bbox);
 
   // in-line image operators
   void opBeginImage(Object args[], int numArgs);
@@ -345,8 +286,6 @@ private:
   void opEndMarkedContent(Object args[], int numArgs);
   void opMarkPoint(Object args[], int numArgs);
 
-  GfxState *saveStateStack();
-  void restoreStateStack(GfxState *oldState);
   void pushResources(Dict *resDict);
   void popResources();
 };

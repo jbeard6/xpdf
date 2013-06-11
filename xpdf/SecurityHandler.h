@@ -34,9 +34,6 @@ public:
   SecurityHandler(PDFDoc *docA);
   virtual ~SecurityHandler();
 
-  // Returns true if the file is actually unencrypted.
-  virtual GBool isUnencrypted() { return gFalse; }
-
   // Check the document's encryption.  If the document is encrypted,
   // this will first try <ownerPassword> and <userPassword> (in
   // "batch" mode), and if those fail, it will attempt to request a
@@ -77,7 +74,6 @@ public:
   virtual Guchar *getFileKey() = 0;
   virtual int getFileKeyLength() = 0;
   virtual int getEncVersion() = 0;
-  virtual CryptAlgorithm getEncAlgorithm() = 0;
 
 protected:
 
@@ -94,7 +90,6 @@ public:
   StandardSecurityHandler(PDFDoc *docA, Object *encryptDictA);
   virtual ~StandardSecurityHandler();
 
-  virtual GBool isUnencrypted();
   virtual void *makeAuthData(GString *ownerPassword,
 			     GString *userPassword);
   virtual void *getAuthData();
@@ -105,21 +100,18 @@ public:
   virtual Guchar *getFileKey() { return fileKey; }
   virtual int getFileKeyLength() { return fileKeyLength; }
   virtual int getEncVersion() { return encVersion; }
-  virtual CryptAlgorithm getEncAlgorithm() { return encAlgorithm; }
 
 private:
 
   int permFlags;
   GBool ownerPasswordOk;
-  Guchar fileKey[32];
+  Guchar fileKey[16];
   int fileKeyLength;
   int encVersion;
   int encRevision;
-  CryptAlgorithm encAlgorithm;
   GBool encryptMetadata;
 
   GString *ownerKey, *userKey;
-  GString *ownerEnc, *userEnc;
   GString *fileID;
   GBool ok;
 };
@@ -146,7 +138,6 @@ public:
   virtual Guchar *getFileKey() { return fileKey; }
   virtual int getFileKeyLength() { return fileKeyLength; }
   virtual int getEncVersion() { return encVersion; }
-  virtual CryptAlgorithm getEncAlgorithm() { return encAlgorithm; }
 
 private:
 
@@ -157,7 +148,6 @@ private:
   Guchar fileKey[16];
   int fileKeyLength;
   int encVersion;
-  CryptAlgorithm encAlgorithm;
   GBool ok;
 };
 #endif // ENABLE_PLUGINS

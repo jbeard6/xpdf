@@ -20,8 +20,7 @@ class TextPage;
 
 //------------------------------------------------------------------------
 
-typedef void (*CoreOutRedrawCbk)(void *data, int x0, int y0, int x1, int y1,
-				 GBool composited);
+typedef void (*CoreOutRedrawCbk)(void *data, int x0, int y0, int x1, int y1);
 
 //------------------------------------------------------------------------
 // CoreOutputDev

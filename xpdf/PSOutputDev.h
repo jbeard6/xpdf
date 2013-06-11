@@ -21,20 +21,14 @@
 #include "GlobalParams.h"
 #include "OutputDev.h"
 
-class GHash;
-class PDFDoc;
-class XRef;
 class Function;
 class GfxPath;
 class GfxFont;
 class GfxColorSpace;
 class GfxSeparationColorSpace;
 class PDFRectangle;
-struct PST1FontName;
-struct PSFont8Info;
 struct PSFont16Enc;
 class PSOutCustomColor;
-class PSOutputDev;
 
 //------------------------------------------------------------------------
 // PSOutputDev
@@ -53,38 +47,25 @@ enum PSFileType {
   psGeneric			// write to a generic stream
 };
 
-enum PSOutCustomCodeLocation {
-  psOutCustomDocSetup,
-  psOutCustomPageSetup
-};
-
-typedef void (*PSOutputFunc)(void *stream, const char *data, int len);
-
-typedef GString *(*PSOutCustomCodeCbk)(PSOutputDev *psOut,
-				       PSOutCustomCodeLocation loc, int n, 
-				       void *data);
+typedef void (*PSOutputFunc)(void *stream, char *data, int len);
 
 class PSOutputDev: public OutputDev {
 public:
 
   // Open a PostScript output file, and write the prolog.
-  PSOutputDev(char *fileName, PDFDoc *docA,
+  PSOutputDev(char *fileName, XRef *xrefA, Catalog *catalog,
 	      int firstPage, int lastPage, PSOutMode modeA,
 	      int imgLLXA = 0, int imgLLYA = 0,
 	      int imgURXA = 0, int imgURYA = 0,
-	      GBool manualCtrlA = gFalse,
-	      PSOutCustomCodeCbk customCodeCbkA = NULL,
-	      void *customCodeCbkDataA = NULL);
+	      GBool manualCtrlA = gFalse);
 
   // Open a PSOutputDev that will write to a generic stream.
   PSOutputDev(PSOutputFunc outputFuncA, void *outputStreamA,
-	      PDFDoc *docA,
+	      XRef *xrefA, Catalog *catalog,
 	      int firstPage, int lastPage, PSOutMode modeA,
 	      int imgLLXA = 0, int imgLLYA = 0,
 	      int imgURXA = 0, int imgURYA = 0,
-	      GBool manualCtrlA = gFalse,
-	      PSOutCustomCodeCbk customCodeCbkA = NULL,
-	      void *customCodeCbkDataA = NULL);
+	      GBool manualCtrlA = gFalse);
 
   // Destructor -- writes the trailer and closes the file.
   virtual ~PSOutputDev();
@@ -110,11 +91,7 @@ public:
   // radialShadedFill()?  If this returns false, these shaded fills
   // will be reduced to a series of other drawing operations.
   virtual GBool useShadedFills()
-    { return level >= psLevel2; }
-
-  // Does this device use drawForm()?  If this returns false,
-  // form-type XObjects will be interpreted (i.e., unrolled).
-  virtual GBool useDrawForm() { return preload; }
+    { return level == psLevel2 || level == psLevel3; }
 
   // Does this device use beginType3Char/endType3Char?  Otherwise,
   // text in Type 3 fonts will be drawn with drawChar/drawString.
@@ -141,17 +118,6 @@ public:
 
   //----- initialization and control
 
-  // Check to see if a page slice should be displayed.  If this
-  // returns false, the page display is aborted.  Typically, an
-  // OutputDev will use some alternate means to display the page
-  // before returning false.
-  virtual GBool checkPageSlice(Page *page, double hDPI, double vDPI,
-			       int rotate, GBool useMediaBox, GBool crop,
-			       int sliceX, int sliceY, int sliceW, int sliceH,
-			       GBool printing,
-			       GBool (*abortCheckCbk)(void *data) = NULL,
-			       void *abortCheckCbkData = NULL);
-
   // Start a page.
   virtual void startPage(int pageNum, GfxState *state);
 
@@ -177,7 +143,6 @@ public:
   virtual void updateStrokeColor(GfxState *state);
   virtual void updateFillOverprint(GfxState *state);
   virtual void updateStrokeOverprint(GfxState *state);
-  virtual void updateTransfer(GfxState *state);
 
   //----- update text state
   virtual void updateFont(GfxState *state);
@@ -189,27 +154,24 @@ public:
   virtual void updateHorizScaling(GfxState *state);
   virtual void updateTextPos(GfxState *state);
   virtual void updateTextShift(GfxState *state, double shift);
-  virtual void saveTextPos(GfxState *state);
-  virtual void restoreTextPos(GfxState *state);
 
   //----- path painting
   virtual void stroke(GfxState *state);
   virtual void fill(GfxState *state);
   virtual void eoFill(GfxState *state);
-  virtual void tilingPatternFill(GfxState *state, Gfx *gfx, Object *str,
+  virtual void tilingPatternFill(GfxState *state, Object *str,
 				 int paintType, Dict *resDict,
 				 double *mat, double *bbox,
 				 int x0, int y0, int x1, int y1,
 				 double xStep, double yStep);
-  virtual GBool functionShadedFill(GfxState *state,
-				   GfxFunctionShading *shading);
-  virtual GBool axialShadedFill(GfxState *state, GfxAxialShading *shading);
-  virtual GBool radialShadedFill(GfxState *state, GfxRadialShading *shading);
+  virtual void functionShadedFill(GfxState *state,
+				  GfxFunctionShading *shading);
+  virtual void axialShadedFill(GfxState *state, GfxAxialShading *shading);
+  virtual void radialShadedFill(GfxState *state, GfxRadialShading *shading);
 
   //----- path clipping
   virtual void clip(GfxState *state);
   virtual void eoClip(GfxState *state);
-  virtual void clipToStrokePath(GfxState *state);
 
   //----- text drawing
   virtual void drawString(GfxState *state, GString *s);
@@ -239,9 +201,6 @@ public:
   virtual void type3D1(GfxState *state, double wx, double wy,
 		       double llx, double lly, double urx, double ury);
 
-  //----- form XObjects
-  virtual void drawForm(Ref ref);
-
   //----- PostScript XObjects
   virtual void psXObject(Stream *psStream, Stream *level1Stream);
 
@@ -261,16 +220,10 @@ public:
 		     void *data)
     { overlayCbk = cbk; overlayCbkData = data; }
 
-  void writePSChar(char c);
-  void writePS(const char *s);
-  void writePSFmt(const char *fmt, ...);
-  void writePSString(GString *s);
-  void writePSName(const char *s);
-
 private:
 
   void init(PSOutputFunc outputFuncA, void *outputStreamA,
-	    PSFileType fileTypeA, PDFDoc *docA,
+	    PSFileType fileTypeA, XRef *xrefA, Catalog *catalog,
 	    int firstPage, int lastPage, PSOutMode modeA,
 	    int imgLLXA, int imgLLYA, int imgURXA, int imgURYA,
 	    GBool manualCtrlA);
@@ -280,24 +233,14 @@ private:
   void setupEmbeddedType1Font(Ref *id, GString *psName);
   void setupExternalType1Font(GString *fileName, GString *psName);
   void setupEmbeddedType1CFont(GfxFont *font, Ref *id, GString *psName);
-  void setupEmbeddedOpenTypeT1CFont(GfxFont *font, Ref *id, GString *psName);
   void setupEmbeddedTrueTypeFont(GfxFont *font, Ref *id, GString *psName);
-  void setupExternalTrueTypeFont(GfxFont *font, GString *fileName,
-				 GString *psName);
+  void setupExternalTrueTypeFont(GfxFont *font, GString *psName);
   void setupEmbeddedCIDType0Font(GfxFont *font, Ref *id, GString *psName);
   void setupEmbeddedCIDTrueTypeFont(GfxFont *font, Ref *id, GString *psName,
 				    GBool needVerticalMetrics);
-  void setupExternalCIDTrueTypeFont(GfxFont *font,
-				    GString *fileName,
-				    GString *psName,
-				    GBool needVerticalMetrics);
-  void setupEmbeddedOpenTypeCFFFont(GfxFont *font, Ref *id, GString *psName);
   void setupType3Font(GfxFont *font, GString *psName, Dict *parentResDict);
-  GString *makePSFontName(GfxFont *font, Ref *id);
   void setupImages(Dict *resDict);
-  void setupImage(Ref id, Stream *str, GBool mask);
-  void setupForms(Dict *resDict);
-  void setupForm(Ref id, Object *strObj);
+  void setupImage(Ref id, Stream *str);
   void addProcessColor(double c, double m, double y, double k);
   void addCustomColor(GfxSeparationColorSpace *sepCS);
   void doPath(GfxPath *path);
@@ -312,14 +255,8 @@ private:
 		 Stream *str, int width, int height, int len,
 		 int *maskColors, Stream *maskStr,
 		 int maskWidth, int maskHeight, GBool maskInvert);
-  void doImageL3(Object *ref, GfxImageColorMap *colorMap,
-		 GBool invert, GBool inlineImg,
-		 Stream *str, int width, int height, int len,
-		 int *maskColors, Stream *maskStr,
-		 int maskWidth, int maskHeight, GBool maskInvert);
   void dumpColorSpaceL2(GfxColorSpace *colorSpace,
-			GBool genXform, GBool updateColors,
-			GBool map01);
+			GBool genXform, GBool updateColors);
 #if OPI_SUPPORT
   void opiBegin20(GfxState *state, Dict *dict);
   void opiBegin13(GfxState *state, Dict *dict);
@@ -328,18 +265,19 @@ private:
   GBool getFileSpec(Object *fileSpec, Object *fileName);
 #endif
   void cvtFunction(Function *func);
+  void writePSChar(char c);
+  void writePS(char *s);
+  void writePSFmt(const char *fmt, ...);
+  void writePSString(GString *s);
+  void writePSName(char *s);
   GString *filterPSName(GString *name);
-  void writePSTextLine(GString *s);
 
   PSLevel level;		// PostScript level (1, 2, separation)
   PSOutMode mode;		// PostScript mode (PS, EPS, form)
   int paperWidth;		// width of paper, in pts
   int paperHeight;		// height of paper, in pts
-  GBool paperMatch;		// true if paper size is set to match each page
   int imgLLX, imgLLY,		// imageable area, in pts
       imgURX, imgURY;
-  GBool preload;		// load all images into memory, and
-				//   predefine forms
 
   PSOutputFunc outputFunc;
   void *outputStream;
@@ -350,41 +288,29 @@ private:
   void *underlayCbkData;
   void (*overlayCbk)(PSOutputDev *psOut, void *data);
   void *overlayCbkData;
-  GString *(*customCodeCbk)(PSOutputDev *psOut,
-			    PSOutCustomCodeLocation loc, int n, 
-			    void *data);
-  void *customCodeCbkData;
 
-  PDFDoc *doc;
   XRef *xref;			// the xref table for this PDF file
 
   Ref *fontIDs;			// list of object IDs of all used fonts
   int fontIDLen;		// number of entries in fontIDs array
   int fontIDSize;		// size of fontIDs array
-  GHash *fontNames;		// all used font names
-  PST1FontName *t1FontNames;	// font names for Type 1/1C fonts
-  int t1FontNameLen;		// number of entries in t1FontNames array
-  int t1FontNameSize;		// size of t1FontNames array
-  PSFont8Info *font8Info;	// info for 8-bit fonts
-  int font8InfoLen;		// number of entries in font8Info array
-  int font8InfoSize;		// size of font8Info array
+  Ref *fontFileIDs;		// list of object IDs of all embedded fonts
+  int fontFileIDLen;		// number of entries in fontFileIDs array
+  int fontFileIDSize;		// size of fontFileIDs array
+  GString **fontFileNames;	// list of names of all embedded external fonts
+  int fontFileNameLen;		// number of entries in fontFileNames array
+  int fontFileNameSize;		// size of fontFileNames array
+  int nextTrueTypeNum;		// next unique number to append to a TrueType
+				//   font name
   PSFont16Enc *font16Enc;	// encodings for substitute 16-bit fonts
   int font16EncLen;		// number of entries in font16Enc array
   int font16EncSize;		// size of font16Enc array
-  Ref *imgIDs;			// list of image IDs for in-memory images
-  int imgIDLen;			// number of entries in imgIDs array
-  int imgIDSize;		// size of imgIDs array
-  Ref *formIDs;			// list of IDs for predefined forms
-  int formIDLen;		// number of entries in formIDs array
-  int formIDSize;		// size of formIDs array
   GList *xobjStack;		// stack of XObject dicts currently being
 				//   processed
   int numSaves;			// current number of gsaves
   int numTilingPatterns;	// current number of nested tiling patterns
   int nextFunc;			// next unique number to use for a function
 
-  GList *paperSizes;		// list of used paper sizes, if paperMatch
-				//   is true [PSOutPaperSize]
   double tx0, ty0;		// global translation
   double xScale0, yScale0;	// global scaling
   int rotate0;			// rotation angle (0, 90, 180, 270)
@@ -409,9 +335,7 @@ private:
   GString *t3String;		// Type 3 content string
   double t3WX, t3WY,		// Type 3 character parameters
          t3LLX, t3LLY, t3URX, t3URY;
-  GBool t3FillColorOnly;	// operators should only use the fill color
   GBool t3Cacheable;		// cleared if char is not cacheable
-  GBool t3NeedsRestore;		// set if a 'q' operator was issued
 
 #if OPI_SUPPORT
   int opi13Nest;		// nesting level of OPI 1.3 objects
@@ -419,6 +343,7 @@ private:
 #endif
 
   GBool ok;			// set up ok?
+
 
   friend class WinPDFPrinter;
 };

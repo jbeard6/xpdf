@@ -16,20 +16,15 @@
 #include "Object.h"
 #include "Array.h"
 #include "Dict.h"
-#include "Decrypt.h"
 #include "Parser.h"
 #include "XRef.h"
 #include "Error.h"
+#include "Decrypt.h"
 
-// Max number of nested objects.  This is used to catch infinite loops
-// in the object structure.
-#define recursionLimit 500
-
-Parser::Parser(XRef *xrefA, Lexer *lexerA, GBool allowStreamsA) {
+Parser::Parser(XRef *xrefA, Lexer *lexerA) {
   xref = xrefA;
   lexer = lexerA;
   inlineImg = 0;
-  allowStreams = allowStreamsA;
   lexer->getObj(&buf1);
   lexer->getObj(&buf2);
 }
@@ -40,17 +35,17 @@ Parser::~Parser() {
   delete lexer;
 }
 
-Object *Parser::getObj(Object *obj, GBool simpleOnly,
-		       Guchar *fileKey,
-		       CryptAlgorithm encAlgorithm, int keyLength,
-		       int objNum, int objGen, int recursion) {
+Object *Parser::getObj(Object *obj,
+		       Guchar *fileKey, int keyLength,
+		       int objNum, int objGen) {
   char *key;
   Stream *str;
   Object obj2;
   int num;
-  DecryptStream *decrypt;
-  GString *s, *s2;
-  int c;
+  Decrypt *decrypt;
+  GString *s;
+  char *p;
+  int i;
 
   // refill buffer after inline image data
   if (inlineImg == 2) {
@@ -62,24 +57,22 @@ Object *Parser::getObj(Object *obj, GBool simpleOnly,
   }
 
   // array
-  if (!simpleOnly && recursion < recursionLimit && buf1.isCmd("[")) {
+  if (buf1.isCmd("[")) {
     shift();
     obj->initArray(xref);
     while (!buf1.isCmd("]") && !buf1.isEOF())
-      obj->arrayAdd(getObj(&obj2, gFalse, fileKey, encAlgorithm, keyLength,
-			   objNum, objGen, recursion + 1));
+      obj->arrayAdd(getObj(&obj2, fileKey, keyLength, objNum, objGen));
     if (buf1.isEOF())
-      error(errSyntaxError, getPos(), "End of file inside array");
+      error(getPos(), "End of file inside array");
     shift();
 
   // dictionary or stream
-  } else if (!simpleOnly && recursion < recursionLimit && buf1.isCmd("<<")) {
+  } else if (buf1.isCmd("<<")) {
     shift();
     obj->initDict(xref);
     while (!buf1.isCmd(">>") && !buf1.isEOF()) {
       if (!buf1.isName()) {
-	error(errSyntaxError, getPos(),
-	      "Dictionary key must be a name object");
+	error(getPos(), "Dictionary key must be a name object");
 	shift();
       } else {
 	key = copyString(buf1.getName());
@@ -88,19 +81,18 @@ Object *Parser::getObj(Object *obj, GBool simpleOnly,
 	  gfree(key);
 	  break;
 	}
-	obj->dictAdd(key, getObj(&obj2, gFalse,
-				 fileKey, encAlgorithm, keyLength,
-				 objNum, objGen, recursion + 1));
+	obj->dictAdd(key, getObj(&obj2, fileKey, keyLength, objNum, objGen));
       }
     }
     if (buf1.isEOF())
-      error(errSyntaxError, getPos(), "End of file inside dictionary");
-    // stream objects are not allowed inside content streams or
-    // object streams
-    if (allowStreams && buf2.isCmd("stream")) {
-      if ((str = makeStream(obj, fileKey, encAlgorithm, keyLength,
-			    objNum, objGen, recursion + 1))) {
+      error(getPos(), "End of file inside dictionary");
+    if (buf2.isCmd("stream")) {
+      if ((str = makeStream(obj))) {
 	obj->initStream(str);
+	if (fileKey) {
+	  str->getBaseStream()->doDecryption(fileKey, keyLength,
+					     objNum, objGen);
+	}
       } else {
 	obj->free();
 	obj->initError();
@@ -123,19 +115,15 @@ Object *Parser::getObj(Object *obj, GBool simpleOnly,
 
   // string
   } else if (buf1.isString() && fileKey) {
-    s = buf1.getString();
-    s2 = new GString();
-    obj2.initNull();
-    decrypt = new DecryptStream(new MemStream(s->getCString(), 0,
-					      s->getLength(), &obj2),
-				fileKey, encAlgorithm, keyLength,
-				objNum, objGen);
-    decrypt->reset();
-    while ((c = decrypt->getChar()) != EOF) {
-      s2->append((char)c);
+    buf1.copy(obj);
+    s = obj->getString();
+    decrypt = new Decrypt(fileKey, keyLength, objNum, objGen);
+    for (i = 0, p = obj->getString()->getCString();
+	 i < s->getLength();
+	 ++i, ++p) {
+      *p = decrypt->decryptByte(*p);
     }
     delete decrypt;
-    obj->initString(s2);
     shift();
 
   // simple object
@@ -147,9 +135,7 @@ Object *Parser::getObj(Object *obj, GBool simpleOnly,
   return obj;
 }
 
-Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
-			   CryptAlgorithm encAlgorithm, int keyLength,
-			   int objNum, int objGen, int recursion) {
+Stream *Parser::makeStream(Object *dict) {
   Object obj;
   BaseStream *baseStr;
   Stream *str;
@@ -157,18 +143,15 @@ Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
 
   // get stream start position
   lexer->skipToNextLine();
-  if (!(str = lexer->getStream())) {
-    return NULL;
-  }
-  pos = str->getPos();
+  pos = lexer->getPos();
 
   // get length
-  dict->dictLookup("Length", &obj, recursion);
+  dict->dictLookup("Length", &obj);
   if (obj.isInt()) {
     length = (Guint)obj.getInt();
     obj.free();
   } else {
-    error(errSyntaxError, getPos(), "Bad 'Length' attribute in stream");
+    error(getPos(), "Bad 'Length' attribute in stream");
     obj.free();
     return NULL;
   }
@@ -194,7 +177,7 @@ Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
   if (buf1.isCmd("endstream")) {
     shift();
   } else {
-    error(errSyntaxError, getPos(), "Missing 'endstream'");
+    error(getPos(), "Missing 'endstream'");
     // kludge for broken PDF files: just add 5k to the length, and
     // hope its enough
     length += 5000;
@@ -202,12 +185,6 @@ Stream *Parser::makeStream(Object *dict, Guchar *fileKey,
 
   // make base stream
   str = baseStr->makeSubStream(pos, gTrue, length, dict);
-
-  // handle decryption
-  if (fileKey) {
-    str = new DecryptStream(str, fileKey, encAlgorithm, keyLength,
-			    objNum, objGen);
-  }
 
   // get filters
   str = str->addFilters(dict);

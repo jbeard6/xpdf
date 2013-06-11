@@ -27,20 +27,18 @@
 #include "PDFDoc.h"
 #include "CharTypes.h"
 #include "UnicodeMap.h"
-#include "PDFDocEncoding.h"
 #include "Error.h"
 #include "config.h"
 
-static void printInfoString(Dict *infoDict, const char *key, const char *text,
+static void printInfoString(Dict *infoDict, char *key, char *text,
 			    UnicodeMap *uMap);
-static void printInfoDate(Dict *infoDict, const char *key, const char *text);
-static void printBox(const char *text, PDFRectangle *box);
+static void printInfoDate(Dict *infoDict, char *key, char *text);
+static void printBox(char *text, PDFRectangle *box);
 
 static int firstPage = 1;
 static int lastPage = 0;
 static GBool printBoxes = gFalse;
 static GBool printMetadata = gFalse;
-static GBool rawDates = gFalse;
 static char textEncName[128] = "";
 static char ownerPassword[33] = "\001";
 static char userPassword[33] = "\001";
@@ -57,8 +55,6 @@ static ArgDesc argDesc[] = {
    "print the page bounding boxes"},
   {"-meta",   argFlag,     &printMetadata,    0,
    "print the document metadata (XML)"},
-  {"-rawdates", argFlag,   &rawDates,         0,
-   "print the undecoded date strings directly from the PDF file"},
   {"-enc",    argString,   textEncName,    sizeof(textEncName),
    "output text encoding name"},
   {"-opw",    argString,   ownerPassword,  sizeof(ownerPassword),
@@ -86,8 +82,7 @@ int main(int argc, char *argv[]) {
   GString *ownerPW, *userPW;
   UnicodeMap *uMap;
   Page *page;
-  Object info, xfa;
-  Object *acroForm;
+  Object info;
   char buf[256];
   double w, h, wISO, hISO;
   FILE *f;
@@ -119,7 +114,7 @@ int main(int argc, char *argv[]) {
 
   // get mapping to output encoding
   if (!(uMap = globalParams->getTextEncoding())) {
-    error(errConfig, -1, "Couldn't get text encoding");
+    error(-1, "Couldn't get text encoding");
     delete fileName;
     goto err1;
   }
@@ -170,34 +165,14 @@ int main(int argc, char *argv[]) {
     printInfoString(info.getDict(), "Author",       "Author:         ", uMap);
     printInfoString(info.getDict(), "Creator",      "Creator:        ", uMap);
     printInfoString(info.getDict(), "Producer",     "Producer:       ", uMap);
-    if (rawDates) {
-      printInfoString(info.getDict(), "CreationDate", "CreationDate:   ",
-		      uMap);
-      printInfoString(info.getDict(), "ModDate",      "ModDate:        ",
-		      uMap);
-    } else {
-      printInfoDate(info.getDict(),   "CreationDate", "CreationDate:   ");
-      printInfoDate(info.getDict(),   "ModDate",      "ModDate:        ");
-    }
+    printInfoDate(info.getDict(),   "CreationDate", "CreationDate:   ");
+    printInfoDate(info.getDict(),   "ModDate",      "ModDate:        ");
   }
   info.free();
 
   // print tagging info
   printf("Tagged:         %s\n",
 	 doc->getStructTreeRoot()->isDict() ? "yes" : "no");
-
-  // print form info
-  if ((acroForm = doc->getCatalog()->getAcroForm())->isDict()) {
-    acroForm->dictLookup("XFA", &xfa);
-    if (xfa.isStream() || xfa.isArray()) {
-      printf("Form:           XFA\n");
-    } else {
-      printf("Form:           AcroForm\n");
-    }
-    xfa.free();
-  } else {
-    printf("Form:           none\n");
-  }
 
   // print page count
   printf("Pages:          %d\n", doc->getNumPages());
@@ -216,8 +191,8 @@ int main(int argc, char *argv[]) {
 
   // print page size
   for (pg = firstPage; pg <= lastPage; ++pg) {
-    w = doc->getPageCropWidth(pg);
-    h = doc->getPageCropHeight(pg);
+    w = doc->getPageMediaWidth(pg);
+    h = doc->getPageMediaHeight(pg);
     if (multiPage) {
       printf("Page %4d size: %g x %g pts", pg, w, h);
     } else {
@@ -319,7 +294,7 @@ int main(int argc, char *argv[]) {
   return exitCode;
 }
 
-static void printInfoString(Dict *infoDict, const char *key, const char *text,
+static void printInfoString(Dict *infoDict, char *key, char *text,
 			    UnicodeMap *uMap) {
   Object obj;
   GString *s1;
@@ -345,7 +320,7 @@ static void printInfoString(Dict *infoDict, const char *key, const char *text,
 	    (s1->getChar(i+1) & 0xff);
 	i += 2;
       } else {
-	u = pdfDocEncoding[s1->getChar(i) & 0xff];
+	u = s1->getChar(i) & 0xff;
 	++i;
       }
       n = uMap->mapUnicode(u, buf, sizeof(buf));
@@ -356,10 +331,10 @@ static void printInfoString(Dict *infoDict, const char *key, const char *text,
   obj.free();
 }
 
-static void printInfoDate(Dict *infoDict, const char *key, const char *text) {
+static void printInfoDate(Dict *infoDict, char *key, char *text) {
   Object obj;
   char *s;
-  int year, mon, day, hour, min, sec, n;
+  int year, mon, day, hour, min, sec;
   struct tm tmStruct;
   char buf[256];
 
@@ -369,15 +344,8 @@ static void printInfoDate(Dict *infoDict, const char *key, const char *text) {
     if (s[0] == 'D' && s[1] == ':') {
       s += 2;
     }
-    if ((n = sscanf(s, "%4d%2d%2d%2d%2d%2d",
-		    &year, &mon, &day, &hour, &min, &sec)) >= 1) {
-      switch (n) {
-      case 1: mon = 1;
-      case 2: day = 1;
-      case 3: hour = 0;
-      case 4: min = 0;
-      case 5: sec = 0;
-      }
+    if (sscanf(s, "%4d%2d%2d%2d%2d%2d",
+	       &year, &mon, &day, &hour, &min, &sec) == 6) {
       tmStruct.tm_year = year - 1900;
       tmStruct.tm_mon = mon - 1;
       tmStruct.tm_mday = day;
@@ -402,7 +370,7 @@ static void printInfoDate(Dict *infoDict, const char *key, const char *text) {
   obj.free();
 }
 
-static void printBox(const char *text, PDFRectangle *box) {
+static void printBox(char *text, PDFRectangle *box) {
   printf("%s%8.2f %8.2f %8.2f %8.2f\n",
 	 text, box->x1, box->y1, box->x2, box->y2);
 }

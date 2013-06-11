@@ -27,7 +27,6 @@ static GBool gray = gFalse;
 static char enableT1libStr[16] = "";
 static char enableFreeTypeStr[16] = "";
 static char antialiasStr[16] = "";
-static char vectorAntialiasStr[16] = "";
 static char ownerPassword[33] = "";
 static char userPassword[33] = "";
 static GBool quiet = gFalse;
@@ -56,8 +55,6 @@ static ArgDesc argDesc[] = {
 #endif
   {"-aa",         argString,      antialiasStr,   sizeof(antialiasStr),
    "enable font anti-aliasing: yes, no"},
-  {"-aaVector",   argString,      vectorAntialiasStr, sizeof(vectorAntialiasStr),
-   "enable vector anti-aliasing: yes, no"},
   {"-opw",    argString,   ownerPassword,  sizeof(ownerPassword),
    "owner password (for encrypted files)"},
   {"-upw",    argString,   userPassword,   sizeof(userPassword),
@@ -83,7 +80,7 @@ int main(int argc, char *argv[]) {
   PDFDoc *doc;
   GString *fileName;
   char *ppmRoot;
-  GString *ppmFile;
+  char ppmFile[512];
   GString *ownerPW, *userPW;
   SplashColor paperColor;
   SplashOutputDev *splashOut;
@@ -127,11 +124,6 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, "Bad '-aa' value on command line\n");
     }
   }
-  if (vectorAntialiasStr[0]) {
-    if (!globalParams->setVectorAntialias(vectorAntialiasStr)) {
-      fprintf(stderr, "Bad '-aaVector' value on command line\n");
-    }
-  }
   if (quiet) {
     globalParams->setErrQuiet(quiet);
   }
@@ -165,10 +157,9 @@ int main(int argc, char *argv[]) {
   if (lastPage < 1 || lastPage > doc->getNumPages())
     lastPage = doc->getNumPages();
 
-
   // write PPM files
   if (mono) {
-    paperColor[0] = 0xff;
+    paperColor[0] = 1;
     splashOut = new SplashOutputDev(splashModeMono1, 1, gFalse, paperColor);
   } else if (gray) {
     paperColor[0] = 0xff;
@@ -181,15 +172,10 @@ int main(int argc, char *argv[]) {
   for (pg = firstPage; pg <= lastPage; ++pg) {
     doc->displayPage(splashOut, pg, resolution, resolution, 0,
 		     gFalse, gTrue, gFalse);
-    if (!strcmp(ppmRoot, "-")) {
-      splashOut->getBitmap()->writePNMFile(stdout);
-    } else {
-      ppmFile = GString::format("{0:s}-{1:06d}.{2:s}",
-				ppmRoot, pg,
-				mono ? "pbm" : gray ? "pgm" : "ppm");
-      splashOut->getBitmap()->writePNMFile(ppmFile->getCString());
-      delete ppmFile;
-    }
+    sprintf(ppmFile, "%.*s-%06d.%s",
+	    (int)sizeof(ppmFile) - 32, ppmRoot, pg,
+	    mono ? "pbm" : gray ? "pgm" : "ppm");
+    splashOut->getBitmap()->writePNMFile(ppmFile);
   }
   delete splashOut;
 

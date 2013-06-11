@@ -29,7 +29,6 @@ class Links;
 class LinkDest;
 class LinkAction;
 class TextPage;
-class HighlightFile;
 class CoreOutputDev;
 class PDFCore;
 
@@ -115,8 +114,7 @@ class PDFCore {
 public:
 
   PDFCore(SplashColorMode colorModeA, int bitmapRowPadA,
-	  GBool reverseVideoA, SplashColorPtr paperColorA,
-	  GBool incrementalUpdate);
+	  GBool reverseVideoA, SplashColorPtr paperColorA);
   virtual ~PDFCore();
 
   //----- loadFile / displayPage / displayDest
@@ -137,15 +135,8 @@ public:
   virtual int loadFile(BaseStream *stream, GString *ownerPassword = NULL,
 		       GString *userPassword = NULL);
 
-  // Load an already-created PDFDoc object.
-  virtual void loadDoc(PDFDoc *docA);
-
   // Clear out the current document, if any.
   virtual void clear();
-
-  // Same as clear(), but returns the PDFDoc object instead of
-  // deleting it.
-  virtual PDFDoc *takeDoc(GBool redraw);
 
   // Display (or redisplay) the specified page.  If <scrollToTop> is
   // set, the window is vertically scrolled to the top; otherwise, no
@@ -160,8 +151,7 @@ public:
 
   // Update the display, given the specified parameters.
   virtual void update(int topPageA, int scrollXA, int scrollYA,
-		      double zoomA, int rotateA, GBool force,
-		      GBool addToHist, GBool adjustScrollX);
+		      double zoomA, int rotateA, GBool force, GBool addToHist);
 
   //----- page/position changes
 
@@ -170,31 +160,18 @@ public:
   virtual GBool gotoNamedDestination(GString *dest);
   virtual GBool goForward();
   virtual GBool goBackward();
-  virtual void scrollLeft(int nCols = 16);
-  virtual void scrollRight(int nCols = 16);
-  virtual void scrollUp(int nLines = 16);
-  virtual void scrollUpPrevPage(int nLines = 16);
-  virtual void scrollDown(int nLines = 16);
-  virtual void scrollDownNextPage(int nLines = 16);
+  virtual void scrollLeft(int nCols = 1);
+  virtual void scrollRight(int nCols = 1);
+  virtual void scrollUp(int nLines = 1);
+  virtual void scrollDown(int nLines = 1);
   virtual void scrollPageUp();
   virtual void scrollPageDown();
   virtual void scrollTo(int x, int y);
-  virtual void scrollToLeftEdge();
-  virtual void scrollToRightEdge();
-  virtual void scrollToTopEdge();
-  virtual void scrollToBottomEdge();
-  virtual void scrollToTopLeft();
-  virtual void scrollToBottomRight();
   virtual void zoomToRect(int pg, double ulx, double uly,
 			  double lrx, double lry);
-  virtual void zoomCentered(double zoomA);
-  virtual void zoomToCurrentWidth();
   virtual void setContinuousMode(GBool cm);
 
   //----- selection
-
-  // Selection color.
-  void setSelectionColor(SplashColor color);
 
   // Current selected region.
   void setSelection(int newSelectPage,
@@ -211,10 +188,9 @@ public:
   //----- find
 
   virtual GBool find(char *s, GBool caseSensitive, GBool next, GBool backward,
-		     GBool wholeWord, GBool onePageOnly);
+		     GBool onePageOnly);
   virtual GBool findU(Unicode *u, int len, GBool caseSensitive,
-		      GBool next, GBool backward, GBool wholeWord,
-		      GBool onePageOnly);
+		      GBool next, GBool backward, GBool onePageOnly);
 
 
   //----- coordinate conversion
@@ -229,10 +205,6 @@ public:
   void cvtUserToDev(int pg, double xu, double yu, int *xd, int *yd);
   void cvtDevToWindow(int pg, int xd, int yd, int *xw, int *yw);
   void cvtDevToUser(int pg, int xd, int yd, double *xu, double *yu);
-
-  //----- password dialog
-
-  virtual GString *getPassword() { return NULL; }
 
   //----- misc access
 
@@ -259,23 +231,19 @@ protected:
   void needTile(PDFCorePage *page, int x, int y);
   void xorRectangle(int pg, int x0, int y0, int x1, int y1,
 		    SplashPattern *pattern, PDFCoreTile *oneTile = NULL);
-  int loadHighlightFile(HighlightFile *hf, SplashColorPtr color,
-			SplashColorPtr selectColor, GBool selectable);
   PDFCorePage *findPage(int pg);
-  static void redrawCbk(void *data, int x0, int y0, int x1, int y1,
-			GBool composited);
+  static void redrawCbk(void *data, int x0, int y0, int x1, int y1);
   void redrawWindow(int x, int y, int width, int height,
 		    GBool needUpdate);
   virtual PDFCoreTile *newTile(int xDestA, int yDestA);
-  virtual void updateTileData(PDFCoreTile *tileA, int xSrc, int ySrc,
-			      int width, int height, GBool composited);
+  virtual void updateTileData(PDFCoreTile *tileA,
+			      int xSrc, int ySrc, int width, int height);
   virtual void redrawRect(PDFCoreTile *tileA, int xSrc, int ySrc,
-			  int xDest, int yDest, int width, int height,
-			  GBool composited) = 0;
+			  int xDest, int yDest, int width, int height) = 0;
   void clippedRedrawRect(PDFCoreTile *tile, int xSrc, int ySrc,
 			 int xDest, int yDest, int width, int height,
 			 int xClip, int yClip, int wClip, int hClip,
-			 GBool needUpdate, GBool composited = gTrue);
+			 GBool needUpdate);
   virtual void updateScrollbars() = 0;
   virtual GBool checkForNewFile() { return gFalse; }
 
@@ -293,7 +261,6 @@ protected:
   int *pageY;			// top coordinates for each page (only used
 				//   in continuous mode)
   int topPage;			// page at top of window
-  int midPage;			// page at middle of window
   int scrollX, scrollY;		// offset from top left corner of topPage
 				//   to top left corner of window
   double zoom;			// current zoom level, in percent of 72 dpi
@@ -308,7 +275,6 @@ protected:
   GBool dragging;		// set while selection is being dragged
   GBool lastDragLeft;		// last dragged selection edge was left/right
   GBool lastDragTop;		// last dragged selection edge was top/bottom
-  SplashColor selectXorColor;	// selection xor color
 
   PDFHistory			// page history queue
     history[pdfHistorySize];
@@ -321,7 +287,6 @@ protected:
 
   GList *pages;			// cached pages [PDFCorePage]
   PDFCoreTile *curTile;		// tile currently being rasterized
-  PDFCorePage *curPage;		// page to which curTile belongs
 
   SplashColor paperColor;
   CoreOutputDev *out;
